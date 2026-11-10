@@ -348,45 +348,45 @@ async function askUser(target) {
     return undefined;
   }
   const last = lastUsedProfile(target.userDataDir);
-  try {
-    const result = await server.elicitInput({
-      mode: 'form',
-      message: 'Several Chrome profiles are open. Which profile should chrome-devtools-mcp use?',
-      requestedSchema: {
-        type: 'object',
-        properties: {
-          profile: {
-            type: 'string',
-            title: 'Chrome profile',
-            enum: profiles.map(p => p.dir),
-            enumNames: profiles.map(p => (p.name === p.dir ? p.dir : `${p.name} (${p.dir})`)),
-            ...(profiles.some(p => p.dir === last) ? {default: last} : {}),
-          },
-          remember: {
-            type: 'boolean',
-            title: 'Remember this choice for future sessions',
-            default: true,
-          },
-        },
-        required: ['profile'],
-      },
-    });
-    if (result?.action !== 'accept' || !result.content?.profile) {
-      return {declined: true};
+  const label = p => (p.name === p.dir ? p.dir : `${p.name} (${p.dir})`);
+  const defaults = profiles.some(p => p.dir === last) ? {default: last} : {};
+  // One single-select field, no checkbox: the choice is always remembered and
+  // can be changed later with select_profile. Titled options (oneOf/const) are
+  // the current MCP form; older clients only know enum + enumNames.
+  const schemas = [
+    {type: 'string', title: 'Chrome profile', oneOf: profiles.map(p => ({const: p.dir, title: label(p)})), ...defaults},
+    {type: 'string', title: 'Chrome profile', enum: profiles.map(p => p.dir), enumNames: profiles.map(label), ...defaults},
+  ];
+  for (const profileSchema of schemas) {
+    try {
+      const result = await server.elicitInput({
+        mode: 'form',
+        message: 'Several Chrome profiles are open. Which profile should chrome-devtools-mcp use? (Remembered for next time; change it any time with select_profile.)',
+        requestedSchema: {type: 'object', properties: {profile: profileSchema}, required: ['profile']},
+      });
+      if (result?.action !== 'accept' || !result.content?.profile) {
+        // Clients without a UI for forms (e.g. SDK / print mode) decline
+        // automatically, so a decline is not necessarily the user's answer.
+        return undefined;
+      }
+      return {dir: String(result.content.profile), remember: true};
+    } catch (error) {
+      LOG(`elicitation failed: ${error?.message ?? error}`);
     }
-    return {dir: String(result.content.profile), remember: result.content.remember !== false};
-  } catch (error) {
-    LOG(`elicitation failed: ${error?.message ?? error}`);
-    return undefined;
   }
+  return undefined;
 }
 
-function ambiguityError(target, declined) {
-  const profiles = formatProfiles(listProfiles(target.userDataDir));
+function ambiguityError(target) {
+  const choices = listProfiles(target.userDataDir)
+    .map(p => `- "${p.name}" -> select_profile({"profile": "${p.dir}"})`)
+    .join('\n');
   return new Error(
-    `${declined ? 'No Chrome profile was chosen. ' : ''}Several Chrome profiles are open (known profiles: ${profiles}). ` +
-      'Ask the user which Chrome profile to use, then call select_profile with that profile ' +
-      '(by display name or folder name). The choice can be remembered for future sessions.',
+    'Several Chrome profiles are open, so chrome-devtools-mcp needs to know which one to use.\n' +
+      'Ask the user to pick one, offering each profile as its own choice (for example one button per profile), ' +
+      'then call select_profile with the matching folder name and retry:\n' +
+      `${choices}\n` +
+      'The choice is remembered for future sessions; pass "remember": false only if the user wants it for this session only.',
   );
 }
 
@@ -539,8 +539,8 @@ export async function pinProfile(connectOptions, {userDataDir, channel} = {}) {
         source = 'remembered';
       } else {
         const answer = await askUser(target);
-        if (!answer || answer.declined) {
-          throw ambiguityError(target, answer?.declined);
+        if (!answer) {
+          throw ambiguityError(target);
         }
         profileDir = resolveProfileDir(target.userDataDir, answer.dir);
         session.override = profileDir;

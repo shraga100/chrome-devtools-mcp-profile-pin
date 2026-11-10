@@ -41,7 +41,7 @@ function startServer({env = {}, elicitAnswer} = {}) {
       if (!line.trim()) continue;
       const msg = JSON.parse(line);
       if (msg.method === 'elicitation/create') {
-        console.log(`  <- elicitation: "${msg.params.message}" options=${JSON.stringify(msg.params.requestedSchema?.properties?.profile?.enumNames)}`);
+        console.log(`  <- elicitation: "${msg.params.message}" schema=${JSON.stringify(msg.params.requestedSchema)}`);
         write({jsonrpc: '2.0', id: msg.id, result: elicitAnswer ? {action: 'accept', content: elicitAnswer} : {action: 'decline'}});
       } else if (msg.id !== undefined && pending.has(msg.id)) {
         pending.get(msg.id)(msg);
@@ -91,7 +91,7 @@ const scenarios = {
     return s;
   },
   async elicit() {
-    const s = startServer({elicitAnswer: {profile: a, remember: true}});
+    const s = startServer({elicitAnswer: {profile: a}});
     await s.init();
     console.log('list_pages:', header(await s.call('list_pages')));
     console.log('remembered:', fs.readFileSync(path.join(stateDir, 'state.json'), 'utf8').replace(/\s+/g, ' '));

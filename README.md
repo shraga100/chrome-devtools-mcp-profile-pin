@@ -17,7 +17,7 @@ With `--autoConnect`, all open Chrome profiles share one browser process and one
 ## What you get
 
 - **The server sees exactly one profile.** Pages, workers, service workers, console and network of other profiles are never attached.
-- **It asks only when it has to.** If only one profile has open windows, nothing changes. If several are open, your MCP client asks you which one to use, through MCP elicitation, and can remember the answer.
+- **It asks only when it has to.** If only one profile has open windows, nothing changes. If several are open, you are asked which one to use, with one choice per profile, and the answer is remembered. The question comes either as an MCP elicitation form or, where the client can't show forms, from the agent itself (see below).
 - **You can see which profile is attached.** `list_pages` shows it in the header, e.g. `## Pages (Chrome profile: Work (Profile 1))`.
 - **A `select_profile` tool.** Ask the agent to "switch to my work profile". With no arguments, the tool lists your profiles.
 - **New tabs always open in the attached profile.** If that profile is closed, its window is opened for you.
@@ -30,8 +30,10 @@ The first matching rule wins:
 2. The `CHROME_DEVTOOLS_MCP_PROFILE` environment variable is set to a display name or folder name. Set it to `off` to disable pinning completely.
 3. Only one profile has open windows: no pinning, same as upstream.
 4. You chose a profile earlier and asked to remember it.
-5. The client supports elicitation: you are asked to pick a profile.
-6. Otherwise the tool call fails with a message telling the agent to ask you and call `select_profile`.
+5. The client shows an MCP elicitation form: a single-select list of your profiles.
+6. Otherwise the tool call returns a message that lists each profile with the exact `select_profile` call for it. It tells the agent to ask you with one choice per profile. In Claude Code, for example, the agent asks with one button per profile, and the call is retried after you pick one.
+
+Some clients advertise elicitation but have no UI for it and decline automatically. The Claude desktop app's Code tab runs Claude Code in SDK/print mode and does this. In that case the wrapper falls back to step 6.
 
 ## Requirements
 
