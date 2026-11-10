@@ -1,0 +1,14 @@
+{
+  "name": "chrome-devtools-mcp-profile-pin",
+  "version": "0.1.0",
+  "description": "Pin chrome-devtools-mcp to one Chrome profile when several are open; re-applies itself after chrome-devtools-mcp updates.",
+  "license": "Apache-2.0",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=22.12" },
+  "scripts": {
+    "build": "node build.mjs",
+    "test:offline": "node test/e2e.mjs offline"
+  },
+  "repository": "github:shraga100/chrome-devtools-mcp-profile-pin"
+}
