@@ -106,6 +106,7 @@ node build.mjs --force   # rebuild
 | `CHROME_DEVTOOLS_MCP_CHROME_PATH` | Chrome executable, if it isn't found automatically. |
 | `CHROME_DEVTOOLS_MCP_SOURCE` | Path of the chrome-devtools-mcp package to patch, if it isn't the global npm one. |
 | `CHROME_DEVTOOLS_MCP_PROFILE_STATE_DIR` | Where the remembered choice is stored. Default: `~/.chrome-devtools-mcp-profile-pin`. |
+| `CHROME_DEVTOOLS_MCP_PROFILE_DEBUG` | Set to `1` to log connection timings to stderr. |
 
 The `select_profile` tool takes these arguments:
 
@@ -119,7 +120,7 @@ Switching reconnects to Chrome, so Chrome may show "Allow remote debugging?" aga
 
 - The wrapper opens **one** WebSocket to Chrome, so the consent dialog appears once. It resolves the profile on that socket and then hands the same socket to Puppeteer through `puppeteer.connect({transport})`.
 - To find a profile's `browserContextId`, it runs `chrome --profile-directory=<dir> "data:text/html,<!--nonce-->"`. The running Chrome opens that tab inside the profile, opening the profile's window if needed, and the wrapper looks for the nonce in `Target.targetCreated`. It runs no script in your pages. If the profile already has other tabs, the helper tab is closed again. A running Chrome ignores `about:` and `chrome://` URLs from the command line, which is why the helper tab uses a `data:` URL.
-- Puppeteer's `targetFilter` rejects targets whose `browserContextId` belongs to another profile.
+- Puppeteer's `targetFilter` rejects targets whose `browserContextId` belongs to another profile. Puppeteer doesn't run that filter for service workers, so the wrapper also filters `browser.targets()` and the `targetcreated`/`targetchanged`/`targetdestroyed` events. Without that, extensions installed in several profiles would show up once per profile under "Extension Service Workers".
 - `new_page` first tries `Target.createTarget({browserContextId})`. Chrome only accepts that while the profile is the last-focused one, so on failure the wrapper falls back to the command-line trick.
 - The patch is applied to the built JavaScript with exact-match anchors (`lib/patch.mjs`). If any anchor is missing, the build fails as a whole rather than half-applying.
 

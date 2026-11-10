@@ -22,9 +22,9 @@ const [scenario = 'offline', a, b] = process.argv.slice(2);
 const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'cdmcp-pin-test-'));
 
 function startServer({env = {}, elicitAnswer} = {}) {
-  const child = spawn(process.execPath, [path.join(ROOT, 'launch.mjs'), '--autoConnect', '--no-usage-statistics'], {
+  const child = spawn(process.execPath, [path.join(ROOT, 'launch.mjs'), '--autoConnect', '--categoryExtensions', '--experimentalIncludeAllPages', '--no-usage-statistics'], {
     stdio: ['pipe', 'pipe', 'pipe'],
-    env: {...process.env, CHROME_DEVTOOLS_MCP_PROFILE_STATE_DIR: stateDir, ...env},
+    env: {...process.env, CHROME_DEVTOOLS_MCP_PROFILE_STATE_DIR: stateDir, CHROME_DEVTOOLS_MCP_PROFILE_DEBUG: '1', ...env},
   });
   let stderr = '';
   child.stderr.on('data', d => (stderr += d));
@@ -86,7 +86,15 @@ const scenarios = {
   async fixed() {
     const s = startServer({env: {CHROME_DEVTOOLS_MCP_PROFILE: a}});
     await s.init();
-    console.log('list_pages:', header(await s.call('list_pages')));
+    console.log(new Date().toISOString().slice(11, 23), 'calling list_pages');
+    const pages = await s.call('list_pages');
+    console.log(new Date().toISOString().slice(11, 23), 'list_pages returned');
+    console.log('list_pages:', header(pages));
+    // Extension service workers must belong to the pinned profile only: the
+    // same extension installed in several profiles would show up repeatedly.
+    const workers = [...pages.matchAll(/^sw-\d+: chrome-extension:\/\/([a-p]{32})\//gm)].map(m => m[1]);
+    const dupes = workers.filter((id, i) => workers.indexOf(id) !== i);
+    console.log(`extension service workers: ${workers.length}, duplicated extension ids: ${new Set(dupes).size}`);
     console.log('new_page:', header(await s.call('new_page', {url: 'data:text/html,<title>e2e-fixed</title>'})));
     return s;
   },

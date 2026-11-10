@@ -33,7 +33,13 @@ export const PROFILE_ENV = 'CHROME_DEVTOOLS_MCP_PROFILE';
 const CHROME_PATH_ENV = 'CHROME_DEVTOOLS_MCP_CHROME_PATH';
 const STATE_DIR_ENV = 'CHROME_DEVTOOLS_MCP_PROFILE_STATE_DIR';
 const MARKER_PREFIX = 'cdmcp-profile-';
+const TARGET_EVENTS = new Set(['targetcreated', 'targetchanged', 'targetdestroyed']);
 const LOG = msg => process.stderr.write(`[profile-pin] ${msg}\n`);
+const DEBUG = msg => {
+  if (process.env.CHROME_DEVTOOLS_MCP_PROFILE_DEBUG) {
+    LOG(`${new Date().toISOString().slice(11, 23)} ${msg}`);
+  }
+};
 
 /** Per-process state (one MCP server per process). */
 const session = {
@@ -406,6 +412,7 @@ class PinnedProfile {
   }
 
   attach(browser) {
+    DEBUG('puppeteer connected');
     this.browser = browser;
     for (const ctx of browser.browserContexts()) {
       if (ctx.id) {
@@ -415,6 +422,24 @@ class PinnedProfile {
     browser.__pinnedProfile = this;
     session.browser = browser;
     session.pin = this;
+    // Puppeteer's targetFilter is not applied to service workers (they take an
+    // early path in the target manager), so other profiles' extension service
+    // workers would still show up. Hide every target of another profile at the
+    // Browser level as well: targets() and the target* events.
+    const targets = browser.targets.bind(browser);
+    browser.targets = () => targets().filter(t => this.allowsTarget(t));
+    const emit = browser.emit.bind(browser);
+    browser.emit = (type, event) => {
+      if (TARGET_EVENTS.has(type) && typeof event?._getTargetInfo === 'function' && !this.allowsTarget(event)) {
+        return false;
+      }
+      return emit(type, event);
+    };
+  }
+
+  allowsTarget(target) {
+    const ctx = target._getTargetInfo?.().browserContextId;
+    return !ctx || this.allows(ctx);
   }
 
   /** The pinned profile, plus isolated contexts this server creates later. */
@@ -518,7 +543,9 @@ export async function pinProfile(connectOptions, {userDataDir, channel} = {}) {
     return undefined;
   }
 
+  DEBUG('opening WebSocket (Chrome may ask to allow remote debugging)');
   const transport = await WsTransport.open(wsUrl);
+  DEBUG('WebSocket open');
   const client = rawClient(transport);
   let profileDir;
   let source;
@@ -551,7 +578,9 @@ export async function pinProfile(connectOptions, {userDataDir, channel} = {}) {
       }
     }
     const launch = {...target, profileDir, chromePath: findChrome(target.channel)};
+    DEBUG(`resolving profile ${profileDir}`);
     const contextId = await resolveContextId(client, launch);
+    DEBUG(`resolved ${contextId}`);
     client.release();
     const pinned = new PinnedProfile(contextId, launch, source);
     LOG(`attached to Chrome profile "${pinned.profileName}" (${profileDir}, ${source})`);
